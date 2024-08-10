@@ -16,3 +16,10 @@ ENABLE_PREMIUM = True
 
 # MongoDB Connection String
 MONGO_URI = "your_mongo_connection_string"
+# config.py
+
+# Existing configurations...
+
+# Force Subscription Config
+FORCE_SUB_CHANNEL = "your_channel_username"  # Replace with your channel's username, without '@'
+FORCE_SUB_LINK = "https://t.me/your_channel_username"  # Link to your channel
