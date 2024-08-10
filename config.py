@@ -3,7 +3,7 @@
 # Telegram API credentials
 API_ID = "28871407"
 API_HASH = "d22f32d4606020695cb51cf9aa480ce9"
-BOT_TOKEN = "your_bot_token"
+BOT_TOKEN = "7242067053:AAHLoLKbLZhAcPzmmEIPcDQCxmVtk1iKsKU"
 
 # MongoDB configuration
 MONGO_URI = "mongodb+srv://moditrathor:4BG3896oUgCWZXbS@cluster0.sdkc4bt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -14,7 +14,7 @@ PUBLIC_EARN_API_KEY = "a34df0767dc9d907ec87dc1de8fde19abb935bad"
 
 # Bot settings
 FORCE_SUB_CHANNEL = "-1002206980116"
-FORCE_SUB_LINK = "https://t.me/your_force_sub_channel"
+FORCE_SUB_LINK = "https://t.me/snkmchc"
 
 # Private channel ID for file storage notifications
 PRIVATE_CHANNEL_ID = "-100220851954"
