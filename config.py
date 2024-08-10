@@ -23,3 +23,8 @@ MONGO_URI = "your_mongo_connection_string"
 # Force Subscription Config
 FORCE_SUB_CHANNEL = "your_channel_username"  # Replace with your channel's username, without '@'
 FORCE_SUB_LINK = "https://t.me/your_channel_username"  # Link to your channel
+# config.py
+
+# Public Earn configuration
+PUBLIC_EARN_API_URL = "https://publicearn.com/api/shorten"
+PUBLIC_EARN_API_KEY = "a3726ab13339d68dfd481041dadd4ebebaebc11b"
