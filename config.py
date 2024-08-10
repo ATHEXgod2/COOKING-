@@ -1,30 +1,23 @@
 # config.py
 
-API_ID = "28871407"
-API_HASH = "d22f32d4606020695cb51cf9aa480ce9"
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+# Telegram API credentials
+API_ID = "your_api_id"
+API_HASH = "your_api_hash"
+BOT_TOKEN = "your_bot_token"
 
-PRIVATE_CHANNEL_ID = -100xxxxxxxxx
-ADMIN_USER_ID = 6155478725
+# MongoDB configuration
+MONGO_URI = "mongodb://your_mongo_uri"
 
-BITLY_ACCESS_TOKEN = "a3726ab13339d68dfd481041dadd4ebebaebc11b"
+# Public Earn API details
+PUBLIC_EARN_API_URL = "https://api.publicearn.com/shorten"  # Replace with actual URL
+PUBLIC_EARN_API_KEY = "your_public_earn_api_key"
 
-UPI_ID = "your_upi_id@bank"
-PREMIUM_AMOUNT = 100
+# Bot settings
+FORCE_SUB_CHANNEL = "your_force_sub_channel_id"
+FORCE_SUB_LINK = "https://t.me/your_force_sub_channel"
 
-ENABLE_PREMIUM = True
+# Private channel ID for file storage notifications
+PRIVATE_CHANNEL_ID = "your_private_channel_id"
 
-# MongoDB Connection String
-MONGO_URI = "your_mongo_connection_string"
-# config.py
-
-# Existing configurations...
-
-# Force Subscription Config
-FORCE_SUB_CHANNEL = "your_channel_username"  # Replace with your channel's username, without '@'
-FORCE_SUB_LINK = "https://t.me/your_channel_username"  # Link to your channel
-# config.py
-
-# Public Earn configuration
-PUBLIC_EARN_API_URL = "https://publicearn.com/api/shorten"
-PUBLIC_EARN_API_KEY = "a3726ab13339d68dfd481041dadd4ebebaebc11b"
+# Bot owner IDs
+BOT_OWNER_IDS = [123456789]  # Replace with actual owner user IDs
