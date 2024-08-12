@@ -1,183 +1,240 @@
-# bot.py
-
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import os
+import datetime
 from pymongo import MongoClient
-from datetime import datetime, timedelta
-import requests
-import threading
-import time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
 
+# Configuration (using environment variables)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
+MONGO_URI = os.getenv("MONGO_URI")
+PRIVATE_CHANNEL_ID = int(os.getenv("PRIVATE_CHANNEL_ID"))
+FORCE_SUB_CHANNEL_ID = os.getenv("FORCE_SUB_CHANNEL_ID")
+PORT = int(os.getenv("PORT", 8080))  # Default to 8080 if PORT is not set
+
+# MongoDB setup
 client = MongoClient(MONGO_URI)
-db = client["file_sharing_bot"]
-users_col = db["users"]
-files_col = db["files"]
-tokens_col = db["tokens"]
+db = client['telegram_bot']
+files = db['files']
+users = db['users']  # For storing user tokens and subscription status
 
-app = Client("file_sharing_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Shorten URL function
+def shorten_url(url):
+    # Implement your URL shortening logic here (using an API like bit.ly, tinyurl, etc.)
+    return url  # Placeholder, replace with actual shortened URL
 
-# Function to shorten URLs using Public Earn (for generating tokens)
-def shorten_link_public_earn(long_url):
-    headers = {
-        'Authorization': f'Bearer {PUBLIC_EARN_API_KEY}',
-        'Content-Type': 'application/json',
-    }
-    payload = {'url': long_url}
-    response = requests.post(PUBLIC_EARN_API_URL, headers=headers, json=payload)
+# Force subscription check
+def check_subscription(user_id):
+    member = context.bot.get_chat_member(FORCE_SUB_CHANNEL_ID, user_id)
+    return member.status in ['member', 'administrator', 'creator']
+
+# Handle the /start command
+def start(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
     
-    if response.status_code == 200:
-        data = response.json()
-        return data.get('short_url')
-    return None
+    if not check_subscription(user_id):
+        keyboard = [
+            [InlineKeyboardButton("🔔 Subscribe to Channel", url=f"https://t.me/{FORCE_SUB_CHANNEL_ID[1:]}")],
+            [InlineKeyboardButton("✅ I Subscribed", callback_data='subscribed')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        update.message.reply_text(
+            "👋 Welcome to the bot! To continue, please subscribe to our channel.",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        update.message.reply_text(
+            "🎉 Great! You're already subscribed. Please enter your token to access the bot features.",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-# Function to generate and store token with expiry
-def generate_and_store_token(user_id):
-    token = "unique_generated_token"  # Replace with your token generation logic
-    expiration_time = datetime.utcnow() + timedelta(hours=24)
-    tokens_col.insert_one({"user_id": user_id, "token": token, "expires_at": expiration_time})
-    return token
-
-# Function to check if a token is valid and not expired
-def is_token_valid(user_id, token):
-    token_data = tokens_col.find_one({"user_id": user_id, "token": token})
-    if token_data:
-        if datetime.utcnow() < token_data["expires_at"]:
-            return True
+# Handle callback queries (button presses)
+def button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    user_id = query.from_user.id
+    query.answer()
+    
+    if query.data == 'subscribed':
+        if check_subscription(user_id):
+            query.edit_message_text(
+                text="✅ Subscription confirmed! Please enter your token to continue.",
+                parse_mode=ParseMode.MARKDOWN
+            )
         else:
-            tokens_col.delete_one({"user_id": user_id, "token": token})  # Remove expired token
+            query.edit_message_text(
+                text="🚫 It seems you're not subscribed yet. Please subscribe to the channel first.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+# Handle token verification
+def verify_token(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    token = update.message.text.strip()
+    
+    # Assume token verification logic here (check if the token is valid and not expired)
+    is_valid_token = True  # Placeholder, replace with actual token validation logic
+    
+    if is_valid_token:
+        users.update_one({'user_id': user_id}, {'$set': {'access_until': datetime.datetime.now() + datetime.timedelta(hours=24)}}, upsert=True)
+        update.message.reply_text(
+            "🎫 Token verified! You now have access to all bot features for the next 24 hours.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        update.message.reply_text(
+            "❌ Invalid token. Please try again or contact support.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+# Check if user has valid access
+def has_access(user_id):
+    user = users.find_one({'user_id': user_id})
+    if user and user.get('access_until') and user['access_until'] > datetime.datetime.now():
+        return True
     return False
 
-# Function to check if a file should be deleted
-def auto_delete_files():
-    while True:
-        now = datetime.utcnow()
-        expiration_time = now - timedelta(hours=2)
-        files_col.delete_many({"access_time": {"$lt": expiration_time}})
-        time.sleep(3600)  # Sleep for 1 hour before checking again
-
-# Force subscription check function
-def is_subscribed(client, user_id):
-    try:
-        member = client.get_chat_member(FORCE_SUB_CHANNEL, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except:
-        return False
-
-# Check if the user is the bot owner
-def is_owner(user_id):
-    return user_id in BOT_OWNER_IDS
-
-# Start command handler with welcome message and inline keyboard
-@app.on_message(filters.command("start") & filters.private)
-def start(client, message):
-    user_id = message.chat.id
-    if not is_subscribed(client, user_id):
-        ad_watch_link = shorten_link_public_earn("https://yourwebsite.com/watch_ad")
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Watch Ad", url=ad_watch_link)],
-            [InlineKeyboardButton("Help", callback_data="help")]
-        ])
-        client.send_message(
-            chat_id=user_id,
-            text=f"⚠️ To access the bot for 24 hours, please watch the ad:\n\n[Watch Ad]({ad_watch_link})",
-            reply_markup=keyboard,
-            parse_mode="markdown"
+# Handle file uploads and generate persistent links
+def handle_message(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    
+    if not has_access(user_id):
+        update.message.reply_text(
+            "🔑 Please verify your token first to access this feature.",
+            parse_mode=ParseMode.MARKDOWN
         )
         return
     
-    add_user(user_id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Store a File", callback_data="store_file")],
-        [InlineKeyboardButton("Get a File", callback_data="get_file")],
-        [InlineKeyboardButton("Help", callback_data="help")]
-    ])
-    message.reply(
-        text="Welcome to the file-sharing bot! Choose an option below:",
-        reply_markup=keyboard,
-        parse_mode="markdown"
-    )
+    if user_id == OWNER_ID:
+        if update.message.document or update.message.photo:
+            file = update.message.document or update.message.photo[-1]
+            file_id = file.file_id
+            file_info = context.bot.get_file(file_id)
+            
+            # Generate a shortened link
+            link = shorten_url(file_info.file_path)
+            
+            # Save the file in the private channel and get the message ID
+            sent_message = context.bot.send_document(PRIVATE_CHANNEL_ID, file_id)
+            message_id = sent_message.message_id
+            
+            # Save file data with the original file ID in MongoDB
+            save_file({
+                'owner_id': OWNER_ID,
+                'file_id': file_id,
+                'message_id': message_id,
+                'link': link,
+                'expires_in': datetime.datetime.now() + datetime.timedelta(hours=2)
+            })
 
-# Handle button presses for various actions
-@app.on_callback_query()
-def handle_callback(client, callback_query):
-    user_id = callback_query.from_user.id
-    query_data = callback_query.data
-
-    if query_data == "store_file":
-        client.send_message(chat_id=user_id, text="To store a file, please send the file directly here.")
-    elif query_data == "get_file":
-        client.send_message(chat_id=user_id, text="To get a file, please use the command with the file ID.")
-    elif query_data == "help":
-        client.send_message(
-            chat_id=user_id,
-            text="Here’s how you can use the bot:\n\n"
-                 "/store_file - Store a file (requires a token if not subscribed)\n"
-                 "/get_file - Get a stored file (requires a token if not subscribed)\n"
-                 "Join our [channel]({FORCE_SUB_LINK}) to skip token verification.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Join Channel", url=FORCE_SUB_LINK)]
-            ]),
-            parse_mode="markdown"
+            # Reply with the generated link
+            update.message.reply_text(
+                f"📎 Your file link: {link}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+    else:
+        update.message.reply_text(
+            "🚫 You don't have permission to create links.",
+            parse_mode=ParseMode.MARKDOWN
         )
 
-# Automatically generate a token for the bot owner on non-command messages
-@app.on_message(filters.private & ~filters.command)
-def auto_generate_token(client, message):
-    user_id = message.chat.id
-    if is_owner(user_id):
-        token = generate_and_store_token(user_id)
-        shortened_link = shorten_link_public_earn(f"https://yourwebsite.com/verify?token={token}")
-        
-        if shortened_link:
-            client.send_message(chat_id=user_id, text=f"Your token verification link: {shortened_link}")
-        else:
-            client.send_message(chat_id=user_id, text="Failed to generate a shortened link.")
+# Save file data to MongoDB
+def save_file(file_data):
+    files.insert_one(file_data)
 
-# Store files (subscription bypasses token check)
-@app.on_message(filters.command("store_file") & filters.private)
-def store_file(client, message):
-    user_id = message.chat.id
-    if not is_subscribed(client, user_id):
-        # Token verification for non-subscribed users
-        token = message.text.split(' ', 1)[1] if len(message.text.split(' ', 1)) > 1 else None
-        if not token or not is_token_valid(user_id, token):
-            client.send_message(chat_id=user_id, text="⚠️ Invalid or expired token. Please watch the ad again for a new token.", parse_mode="markdown")
-            return
+# Function to serve files with protection
+def serve_file(update: Update, context: CallbackContext):
+    file_link = update.message.text
     
-    if message.document:
-        file_id = message.document.file_id
-        access_time = datetime.utcnow()
-        files_col.insert_one({"file_id": file_id, "stored_by": user_id, "access_time": access_time})
-        client.send_message(PRIVATE_CHANNEL_ID, f"New file stored: {file_id}")
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Store Another File", callback_data="store_file")],
-            [InlineKeyboardButton("Help", callback_data="help")]
-        ])
-        message.reply("File stored successfully! You can store another file or get help below:", reply_markup=keyboard)
-
-# Send files (subscription bypasses token check)
-@app.on_message(filters.command("get_file") & filters.private)
-def send_file(client, message):
-    user_id = message.chat.id
-    if not is_subscribed(client, user_id):
-        # Token verification for non-subscribed users
-        token = message.text.split(' ', 1)[1] if len(message.text.split(' ', 1)) > 1 else None
-        if not token or not is_token_valid(user_id, token):
-            client.send_message(chat_id=user_id, text="⚠️ Invalid or expired token. Please watch the ad again for a new token.", parse_mode="markdown")
-            return
+    user_id = update.message.from_user.id
     
-    file_data = files_col.find_one({"stored_by": user_id})  # Modify query as needed
+    if not has_access(user_id):
+        update.message.reply_text(
+            "🔑 Please verify your token first to access this file.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    file_data = files.find_one({'link': file_link})
+    
     if file_data:
-        client.send_document(chat_id=user_id, document=file_data["file_id"])
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Get Another File", callback_data="get_file")],
-            [InlineKeyboardButton("Help", callback_data="help")]
-        ])
-        message.reply("Here is your file! You can get another file or get help below:", reply_markup=keyboard)
+        current_time = datetime.datetime.now()
+        if current_time > file_data['expires_in']:
+            # File expired, re-fetch from the private channel
+            try:
+                context.bot.send_document(
+                    update.message.chat_id, 
+                    file_data['file_id'], 
+                    protect_content=True
+                )
+                # Re-set expiration time
+                files.update_one(
+                    {'_id': file_data['_id']},
+                    {'$set': {'expires_in': datetime.datetime.now() + datetime.timedelta(hours=2)}}
+                )
+            except Exception as e:
+                update.message.reply_text(
+                    "⚠️ Failed to retrieve the file. Please contact the owner.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                print(f"Error fetching file: {e}")
+        else:
+            # File still valid, serve it directly
+            context.bot.send_document(
+                update.message.chat_id, 
+                file_data['file_id'], 
+                protect_content=True
+            )
     else:
-        client.send_message(chat_id=user_id, text="No files found. Please store some files first.")
+        update.message.reply_text(
+            "❌ Invalid link or the file no longer exists.",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-if __name__ == "__main__":
-    # Start the auto-delete thread
-    threading.Thread(target=auto_delete_files, daemon=True).start()
-    app.run()
+# Cleanup job to delete files after 2 hours
+def clean_up_files(context: CallbackContext):
+    current_time = datetime.datetime.now()
+    expired_files = files.find({'expires_in': {'$lt': current_time}})
+    
+    for file in expired_files:
+        try:
+            # Attempt to delete the file from the bot's storage (but not from the private channel)
+            context.bot.delete_message(PRIVATE_CHANNEL_ID, file['message_id'])
+        except Exception as e:
+            print(f"Failed to delete file: {e}")
+        
+        # Update the file record to remove the current file ID
+        files.update_one({'_id': file['_id']}, {'$unset': {'file_id': ''}})
+
+    print(f"Cleaned up {expired_files.count()} expired files at {current_time}")
+
+# Broadcast function for the owner to send messages to all users
+def broadcast(update: Update, context: CallbackContext):
+    if update.message.from_user.id == OWNER_ID:
+        message = update.message.text.split(' ', 1)[1]
+        user_ids = users.distinct('user_id')
+        for user_id in user_ids:
+            try:
+                context.bot.send_message(chat_id=user_id, text=message)
+            except Exception as e:
+                print(f"Failed to send message to {user_id}: {e}")
+
+# Main function to start the bot
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CallbackQueryHandler(button))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, serve_file))
+    dp.add_handler(MessageHandler(Filters.document | Filters.photo, handle_message))
+    dp.add_handler(CommandHandler("broadcast", broadcast))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, verify_token))
+
+    # Schedule cleanup job to delete files every hour
+    job_queue = updater.job_queue
+    job_queue.run_repeating(clean_up_files, interval=3600, first=0)
+
+    # Start the bot
+    updater.start_polling(port=PORT)
+    updater.idle
